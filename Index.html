@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captura de Pantalla</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/teachable-machine@0.8.7"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        #screenCapture {
+            border: 2px solid #ccc;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Captura de Pantalla</h1>
+    <button id="startCapture">Iniciar Captura de Pantalla</button>
+    <canvas id="screenCapture"></canvas>
+    <div id="result">Esperando predicciones...</div>
+    <script>
+        let model;
+        const canvas = document.getElementById('screenCapture');
+        const resultDiv = document.getElementById('result');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startCapture');
+        let stream;
+
+        // Solicita permiso para capturar la pantalla
+        startButton.addEventListener('click', async () => {
+            try {
+                console.log('Solicitando permiso para capturar la pantalla...');
+                stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: true
+                });
+                console.log('Captura de pantalla iniciada.');
+
+                const videoTrack = stream.getVideoTracks()[0];
+                const { width, height } = videoTrack.getSettings();
+                canvas.width = width;
+                canvas.height = height;
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.play();
+
+                video.onloadedmetadata = () => {
+                    setInterval(() => {
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    }, 1000); // Captura cada segundo
+                };
+
+                // Carga el modelo desde la URL proporcionada
+                const modelURL = 'https://teachablemachine.withgoogle.com/models/z1Mke0PJ9/model.json'; // URL del modelo
+                const modelURLMetadata = 'https://teachablemachine.withgoogle.com/models/z1Mke0PJ9/metadata.json'; // URL del metadata
+                model = await tmImage.load(modelURL, modelURLMetadata);
+                console.log('Modelo cargado');
+
+                // Realiza la predicción usando el modelo
+                async function predict() {
+                    const image = tf.browser.fromPixels(canvas);
+                    const prediction = await model.predict(image);
+                    const topPrediction = prediction[0];
+                    resultDiv.innerHTML = `Predicción: ${topPrediction.className} con una probabilidad de ${(topPrediction.probability * 100).toFixed(2)}%`;
+                }
+
+                setInterval(() => {
+                    predict();
+                }, 1000); // Predicción cada segundo
+
+            } catch (error) {
+                console.error('Error al capturar la pantalla:', error);
+                alert('Error al capturar la pantalla. Asegúrate de estar en HTTPS y que tu navegador permita la captura de pantalla.');
+            }
+        });
+    </script>
+</body>
+</html>

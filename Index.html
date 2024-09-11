@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Captura de Pantalla</title>
+    <title>Detección de Petróleo y Micro:bit</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/teachable-machine@0.8.7"></script>
     <style>
@@ -17,10 +17,14 @@
             border: 2px solid #ccc;
             margin-bottom: 20px;
         }
+        #result {
+            font-size: 24px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
-    <h1>Captura de Pantalla</h1>
+    <h1>Detección de Petróleo y Control del Micro:bit</h1>
     <button id="startCapture">Iniciar Captura de Pantalla</button>
     <canvas id="screenCapture"></canvas>
     <div id="result">Esperando predicciones...</div>
@@ -31,14 +35,32 @@
         const ctx = canvas.getContext('2d');
         const startButton = document.getElementById('startCapture');
         let stream;
+        let port;
 
-        // Solicita permiso para capturar la pantalla
+        async function connectToMicrobit() {
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+                console.log('Conectado al micro:bit');
+            } catch (error) {
+                console.error('Error al conectar con el micro:bit:', error);
+            }
+        }
+
+        async function sendToMicrobit(message) {
+            if (port && port.writable) {
+                const writer = port.writable.getWriter();
+                await writer.write(new TextEncoder().encode(message + '\n'));
+                writer.releaseLock();
+            }
+        }
+
         startButton.addEventListener('click', async () => {
+            await connectToMicrobit();
+
             try {
                 console.log('Solicitando permiso para capturar la pantalla...');
-                stream = await navigator.mediaDevices.getDisplayMedia({
-                    video: true
-                });
+                stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
                 console.log('Captura de pantalla iniciada.');
 
                 const videoTrack = stream.getVideoTracks()[0];
@@ -52,7 +74,8 @@
                 video.onloadedmetadata = () => {
                     setInterval(() => {
                         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    }, 1000); // Captura cada segundo
+                        predict();
+                    }, 1000); // Captura y predicción cada segundo
                 };
 
                 // Carga el modelo desde la URL proporcionada
@@ -61,23 +84,22 @@
                 model = await tmImage.load(modelURL, modelURLMetadata);
                 console.log('Modelo cargado');
 
-                // Realiza la predicción usando el modelo
-                async function predict() {
-                    const image = tf.browser.fromPixels(canvas);
-                    const prediction = await model.predict(image);
-                    const topPrediction = prediction[0];
-                    resultDiv.innerHTML = `Predicción: ${topPrediction.className} con una probabilidad de ${(topPrediction.probability * 100).toFixed(2)}%`;
-                }
-
-                setInterval(() => {
-                    predict();
-                }, 1000); // Predicción cada segundo
-
             } catch (error) {
                 console.error('Error al capturar la pantalla:', error);
                 alert('Error al capturar la pantalla. Asegúrate de estar en HTTPS y que tu navegador permita la captura de pantalla.');
             }
         });
+
+        async function predict() {
+            const image = tf.browser.fromPixels(canvas);
+            const prediction = await model.predict(image);
+            const topPrediction = prediction[0];
+            resultDiv.innerHTML = `Predicción: ${topPrediction.className} con una probabilidad de ${(topPrediction.probability * 100).toFixed(2)}%`;
+
+            if (topPrediction.className === 'petroleo') {
+                await sendToMicrobit('PETROLEO');
+            }
+        }
     </script>
 </body>
 </html>
